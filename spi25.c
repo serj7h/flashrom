@@ -142,6 +142,7 @@ static int probe_spi_rdid_generic(struct flashctx *flash, int bytes)
 	return 0;
 }
 
+
 int probe_spi_rdid(struct flashctx *flash)
 {
 	return probe_spi_rdid_generic(flash, 3);
@@ -818,4 +819,159 @@ int spi_enter_4ba(struct flashctx *const flash)
 int spi_exit_4ba(struct flashctx *flash)
 {
 	return spi_enter_exit_4ba(flash, false);
+}
+
+int probe_spi_w25n(struct flashctx *flash) {
+    const struct flashchip *chip = flash->chip;
+    unsigned char readarr[4];
+    uint32_t id1;
+    uint32_t id2;
+
+    const int ret = spi_rdid(flash, readarr, 4);
+    if (ret)
+            return 0;
+
+    id1 = readarr[1];
+    id2 = (readarr[2] << 8) | readarr[3];
+
+    msg_cdbg("%s: id1 0x%02x, id2 0x%02x\n", __func__, id1, id2);
+
+    if (id1 == chip->manufacture_id && id2 == chip->model_id)
+            return 1;
+
+    return 0;
+}
+
+static int spi_w25n_poll_wip(struct flashctx *const flash) {
+    int timeout_cycles = 100;
+    while ((spi_w25n_read_status_register(flash) & SPI_SR_WIP) && (--timeout_cycles > 0))
+        programmer_delay(100);
+
+    return (timeout_cycles > 0) ? 0 : -1;
+}
+
+int spi_w25n_block_erase(struct flashctx *flash, unsigned int addr, unsigned int blocklen) {
+    int ret;
+
+    msg_cdbg("%s call addr=%d, blocklen=%d\n", __func__, addr, blocklen);
+
+    uint8_t write_en_cmd[] = {JEDEC_WREN};
+    ret = spi_send_command(flash, sizeof(write_en_cmd), 0, write_en_cmd, NULL);
+    if(ret) {
+        msg_cerr("%s failed during write enable command execution\n", __func__);
+        return ret;
+    }
+
+    uint16_t page_addr = addr >> 11;
+    uint8_t block_erase_cmd[] = {JEDEC_BE_D8, 0x00, ((uint8_t*)&page_addr)[1], ((uint8_t*)&page_addr)[0]};
+    ret = spi_send_command(flash, sizeof(block_erase_cmd), 0, block_erase_cmd, NULL);
+    if(ret) {
+        msg_cerr("%s failed during block erase command execution\n", __func__);
+        return ret;
+    }
+
+    ret = spi_w25n_poll_wip(flash);
+    if(ret) {
+        msg_cerr("%s failed, poll wip timeout\n", __func__);
+        return ret;
+    }
+    return 0;
+}
+
+int spi_w25n_write(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len) {
+    int pages_count = (len >> 11) + 1;
+    uint16_t start_page = start >> 11;
+    uint16_t column_addr = start % 2048;
+    unsigned int buf_idx = 0;
+
+    msg_cdbg("%s call start=%d, len=%d\n", __func__, start, len);
+
+    spi_w25n_buffered_mode_en(flash);
+
+    for(int page_addr = start_page; page_addr < start_page + pages_count; page_addr++) {
+        int ret = 0;
+
+        uint8_t write_en_cmd[] = {JEDEC_WREN};
+        ret = spi_send_command(flash, sizeof(write_en_cmd), 0, write_en_cmd, NULL);
+	if(ret) {
+	    msg_cerr("%s failed during write enable command execution\n", __func__);
+            return ret;
+        }
+
+        uint8_t prog_load_cmd[3 + 2048] = {W25N_PROG_DATA_LOAD_OP, ((uint8_t*)&column_addr)[1], ((uint8_t*)&column_addr)[0]};
+        int i = 0;
+        for(; i < (2048 - column_addr) && buf_idx < len; i++, buf_idx++) {
+            prog_load_cmd[3 + i] = buf[buf_idx];
+        }
+        column_addr = 0;
+        ret = spi_send_command(flash, 3 + i, 0, prog_load_cmd, NULL);
+	if(ret) {
+	    msg_cerr("%s failed during program data load command execution\n", __func__);
+            return ret;
+        }
+        ret = spi_w25n_poll_wip(flash);
+        if(ret) {
+            msg_cerr("%s failed, poll wip timeout\n", __func__);
+            return ret;
+        }
+
+        uint8_t prog_exec_cmd[] = {W25N_PROG_EXEC_OP, 0x00, ((uint8_t*)&page_addr)[1], ((uint8_t*)&page_addr)[0]};
+        ret = spi_send_command(flash, sizeof(prog_exec_cmd), 0, prog_exec_cmd, NULL);
+	if(ret) {
+	    msg_cerr("%s failed during fast read command execution\n", __func__);
+            return ret;
+        }
+        ret = spi_w25n_poll_wip(flash);
+        if(ret) {
+            msg_cerr("%s failed, poll wip timeout\n", __func__);
+            return ret;
+        }
+    }
+    return 0;
+}
+
+int spi_w25n_read(struct flashctx *flash, uint8_t *buf, unsigned int start, unsigned int len) {
+    uint8_t page_buf[2048];
+    int pages_count = (len >> 11) + 1;
+    uint16_t start_page = start >> 11;
+    uint16_t column_addr = start % 2048;
+    unsigned int buf_idx = 0;
+
+    msg_cdbg("%s call start=%d, len=%d\n", __func__, start, len);
+
+    spi_w25n_buffered_mode_en(flash);
+
+    for(int page_addr = start_page; page_addr < start_page + pages_count; page_addr++) {
+        int ret = 0;
+
+        uint8_t page_read_cmd[] = {W25N_PAGE_DATA_READ_OP, 0x00, ((uint8_t*)&page_addr)[1], ((uint8_t*)&page_addr)[0]};
+        ret = spi_send_command(flash, sizeof(page_read_cmd), 0, page_read_cmd, NULL);
+	if(ret) {
+	    msg_cerr("%s failed during page read command execution at address 0x%x\n", __func__, page_addr);
+            return ret;
+        }
+        ret = spi_w25n_poll_wip(flash);
+        if(ret) {
+            msg_cerr("%s failed, poll wip timeout\n", __func__);
+            return ret;
+        }
+
+        uint8_t fast_read_cmd[] = {W25N_FAST_READ_OP, ((uint8_t*)&column_addr)[1], ((uint8_t*)&column_addr)[0], 0x00};
+        ret = spi_send_command(flash, sizeof(fast_read_cmd), 2048, fast_read_cmd, page_buf);
+	if(ret) {
+	    msg_cerr("%s failed during fast read command execution at address 0x%x\n", __func__, page_addr);
+            return ret;
+        }
+        ret = spi_w25n_poll_wip(flash);
+        if(ret) {
+            msg_cerr("%s failed, poll wip timeout\n", __func__);
+            return ret;
+        }
+
+        for(int i = 0; i < (2048 - column_addr) && buf_idx < len; i++, buf_idx++) {
+            buf[buf_idx] = page_buf[i];
+        }
+        column_addr = 0;
+    }
+    return 0;
 }

@@ -184,6 +184,15 @@
    From ANY mode (3-bytes or 4-bytes) it works with 4-byte address */
 #define JEDEC_BYTE_PROGRAM_4BA	0x12
 
+/* W25N chip */
+#define W25N_PAGE_DATA_READ_OP 0x13
+#define W25N_FAST_READ_OP 0x0B
+#define W25N_PROG_DATA_LOAD_OP 0x02
+#define W25N_PROG_EXEC_OP 0x10
+#define W25N_PROTEC_REG_ADDR 0xA0
+#define W25N_CONFIG_REG_ADDR 0xB0
+#define W25N_STATUS_REG_ADDR 0xC0
+
 /* Error codes */
 #define SPI_GENERIC_ERROR	-1
 #define SPI_INVALID_OPCODE	-2

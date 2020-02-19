@@ -737,3 +737,40 @@ int spi_prettyprint_status_register_sst25vf040b(struct flashctx *flash)
 	msg_cdbg("Resulting block protection : %s\n", bpt[(status & 0x1c) >> 2]);
 	return 0;
 }
+
+int spi_w25n_buffered_mode_en(struct flashctx *flash) {
+    static const unsigned char cmd[] = { JEDEC_WRSR, W25N_CONFIG_REG_ADDR, (1 << 4) | (1 << 3) }; //EEC en, buf=1
+    int ret = spi_send_command(flash, sizeof(cmd), 0, cmd, NULL);
+    if (ret) {
+	msg_cerr("%s failed during write status register execution\n", __func__);
+        return ret;
+    }
+    return 0;
+}
+
+int spi_w25n_unprotect(struct flashctx *flash) {
+    static const unsigned char cmd[] = { JEDEC_WRSR, W25N_PROTEC_REG_ADDR, 0 };
+    int ret = spi_send_command(flash, sizeof(cmd), 0, cmd, NULL);
+    if (ret) {
+	msg_cerr("%s failed during write status register execution\n", __func__);
+        return ret;
+    }
+    return 0;
+}
+
+uint8_t spi_w25n_read_status_register(struct flashctx *flash) {
+    static const unsigned char cmd[] = { JEDEC_RDSR, W25N_STATUS_REG_ADDR };
+    unsigned char readarr[1];
+    int ret = spi_send_command(flash, sizeof(cmd), sizeof(readarr), cmd, readarr);
+    if (ret) {
+	msg_cerr("%s failed during read status register execution\n", __func__);
+        return ret;
+    }
+    return readarr[0];
+}
+
+int spi_prettyprint_status_register_w25n(struct flashctx *flash) {
+    uint8_t status = spi_w25n_read_status_register(flash);
+    spi_prettyprint_status_register_hex(status);
+    return 0;
+}

@@ -16367,6 +16367,32 @@ const struct flashchip flashchips[] = {
 
 	{
 		.vendor		= "Winbond",
+		.name		= "W25N01GV",
+		.bustype	= BUS_SPI,
+		.manufacture_id	= WINBOND_NEX_ID,
+		.model_id	= WINBOND_NEX_W25N01GV,
+		.total_size	= 128 * 1024,
+		.page_size	= 2048,
+		.feature_bits	= FEATURE_WRSR_WREN,
+		.tested		= TEST_OK_PREW,
+		.probe		= probe_spi_w25n,
+		.probe_timing	= TIMING_ZERO,
+		.block_erasers	=
+		{
+                        {
+				.eraseblocks = { {128 * 1024, 1024} },
+				.block_erase = spi_w25n_block_erase,
+			}
+                },
+		.printlock	= spi_prettyprint_status_register_w25n,
+		.unlock		= spi_w25n_unprotect,
+		.write		= spi_w25n_write,
+		.read		= spi_w25n_read,
+		.voltage	= {2700, 3600},
+	},
+
+	{
+		.vendor		= "Winbond",
 		.name		= "W25Q128.V",
 		.bustype	= BUS_SPI,
 		.manufacture_id	= WINBOND_NEX_ID,

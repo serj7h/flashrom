@@ -60,7 +60,6 @@ int spi_enter_4ba(struct flashctx *flash);
 int spi_exit_4ba(struct flashctx *flash);
 int spi_set_extended_address(struct flashctx *, uint8_t addr_high);
 
-
 /* spi25_statusreg.c */
 uint8_t spi_read_status_register(struct flashctx *flash);
 int spi_write_status_register(struct flashctx *flash, int status);
@@ -104,6 +103,16 @@ int spi_prettyprint_status_register_sst25(struct flashctx *flash);
 int spi_prettyprint_status_register_sst25vf016(struct flashctx *flash);
 int spi_prettyprint_status_register_sst25vf040b(struct flashctx *flash);
 int spi_disable_blockprotect_sst26_global_unprotect(struct flashctx *flash);
+
+/* w25n */
+int probe_spi_w25n(struct flashctx *flash);
+int spi_w25n_block_erase(struct flashctx *flash, unsigned int addr, unsigned int blocklen);
+int spi_w25n_write(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
+int spi_w25n_read(struct flashctx *flash, uint8_t *buf, unsigned int start, unsigned int len);
+int spi_w25n_buffered_mode_en(struct flashctx *flash);
+int spi_w25n_unprotect(struct flashctx *flash);
+uint8_t spi_w25n_read_status_register(struct flashctx *flash);
+int spi_prettyprint_status_register_w25n(struct flashctx *flash);
 
 /* sfdp.c */
 int probe_spi_sfdp(struct flashctx *flash);
